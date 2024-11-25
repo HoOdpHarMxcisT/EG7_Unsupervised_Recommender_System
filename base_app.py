@@ -2,11 +2,8 @@ import numpy as np
 import streamlit as st
 import pandas as pd
 import pickle
-from surprise import Reader, Dataset, SVD
-from surprise.model_selection import train_test_split
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.decomposition import TruncatedSVD
 
 @st.cache_data
 def load_anime_data():
@@ -27,7 +24,6 @@ def compute_cosine_similarity(_tfidf_matrix):
 
 # Load data
 anime_data = load_anime_data()
-ratings = load_ratings_data()
 
 # Ensure required columns are present and fill NaNs with empty strings
 if 'name' in anime_data.columns and 'genre' in anime_data.columns:
@@ -68,93 +64,26 @@ def get_content_based_recommendations(anime_id=None, anime_name=None, num_recomm
 
     return recommended_anime[['name', 'anime_id']].to_dict(orient='records')
 
-@st.cache_resource
-def train_svd_model(ratings):
-    # Prepare the data for Surprise
-    reader = Reader(rating_scale=(ratings['rating'].min(), ratings['rating'].max()))
-    data = Dataset.load_from_df(ratings[['user_id', 'anime_id', 'rating']], reader)
-    
-    # Split the data into training and test sets
-    trainset, valset = train_test_split(data, test_size=0.2, random_state=42)
-    
-    # Initialize the SVD algorithm
-    SVD_algo = SVD()
-    
-    # Train the model on the training data
-    SVD_algo.fit(trainset)
-    
-    return SVD_algo
-
-# Train the SVD model
-svd_model = train_svd_model(ratings)
-
-def get_collaborative_recommendations(user_id, num_recommendations=10):
-    # Predict ratings for all unseen items for the user
-    all_anime_ids = anime_data['anime_id'].unique()
-    user_anime_ids = ratings[ratings['user_id'] == user_id]['anime_id']
-    unseen_anime_ids = [anime_id for anime_id in all_anime_ids if anime_id not in user_anime_ids]
-    
-    predictions = []
-    for anime_id in unseen_anime_ids:
-        prediction = svd_model.predict(user_id, anime_id)
-        predictions.append((anime_id, prediction.est))
-    
-    # Sort predictions by estimated rating in descending order
-    predictions.sort(key=lambda x: x[1], reverse=True)
-    
-    # Get the top N recommendations
-    top_recommendations = predictions[:num_recommendations]
-    
-    # Get the anime details for the top recommendations
-    recommended_anime = anime_data[anime_data['anime_id'].isin([rec[0] for rec in top_recommendations])]
-    
-    return recommended_anime['name'].tolist()
-
 if page == "Recommend Anime":
     st.image("images/Anime_recommender_logo.jpeg", width=350)
     st.title("Anime Recommender")
     st.subheader("Discover Your Next Anime Adventure with **AnimeXplore!**")
     st.image("images/Home_anime_collage.jpg", use_column_width=True)
 
-    st.markdown("### Choose your recommendation method:")
-    rec_method = st.selectbox("Recommendation Method", ["Content-Based Filtering", "Collaborative-Based Filtering"], key="rec_method")
+    st.info("**Tell us what you like, and we'll suggest something you'll love!**")
+    search_term = st.text_input("Enter the anime name you like:", key="search_term")
 
-    if rec_method == "Content-Based Filtering":
-        st.info("**Tell us what you like, and we'll suggest something you'll love!**")
-        search_term = st.text_input("Enter the anime name you like:", key="search_term")
-
-        if st.button("Get Content-Based Recommendations"):
-            if search_term:
-                recommendations = get_content_based_recommendations(anime_name=search_term)
-                if recommendations:
-                    st.subheader("Recommended Animes")
-                    for anime in recommendations:
-                        st.markdown(f"**{anime['name']}**")
-                else:
-                    st.write("No recommendations found for the given anime.")
+    if st.button("Get Content-Based Recommendations"):
+        if search_term:
+            recommendations = get_content_based_recommendations(anime_name=search_term)
+            if recommendations:
+                st.subheader("Recommended Animes")
+                for anime in recommendations:
+                    st.markdown(f"**{anime['name']}**")
             else:
-                st.error("Please enter an anime ID or name to get recommendations.")
-    
-    elif rec_method == "Collaborative-Based Filtering":
-        st.subheader("Collaborative-Based Filtering")
-        st.info("**Discover Anime Loved by Fans Like You!**")
-        user_id = st.text_input("Enter your user ID:", key="user_id")
-        
-        if st.button("Get Collaborative-Based Recommendations"):
-            if user_id:
-                try:
-                    user_id = int(user_id)
-                    recommendations = get_collaborative_recommendations(user_id)
-                    if recommendations:
-                        st.subheader("Recommended Animes")
-                        for anime_name in recommendations:
-                            st.markdown(f"**{anime_name}**")
-                    else:
-                        st.write("No recommendations found for the given user ID.")
-                except ValueError:
-                    st.error("Invalid user ID. Please enter a numeric user ID.")
-            else:
-                st.error("Please enter a user ID to get recommendations.")
+                st.write("No recommendations found for the given anime.")
+        else:
+            st.error("Please enter an anime ID or name to get recommendations.")
 
 elif page == "Overview":
     st.title("Welcome to our Anime Recommender App")
@@ -186,14 +115,25 @@ elif page == "Insights":
     
     if insights_option == "Top 10 Most Rated Animes":
         st.image("images/top_10_most_rated_animes.png", use_column_width=True)
+        st.markdown("**Insights:** The anime Death Note stands out significantly in terms of total ratings, surpassing other titles by a wide margin. The bar plot showcases anime with the highest average ratings, underscoring their strong appeal and quality. Noteworthy mentions include Death Note, Sword Art Online, Shingeki no Kyojin, Code Geass: Hangyaku no Lelouch, Angel Beats!, Elfen Lied, Naruto, Fullmetal Alchemist: Brotherhood, Fullmetal Alchemist, and Code Geass: Hangyaku no Lelouch R2. These anime are highly recommended for their exceptional quality and widespread popularity.")
+    
     elif insights_option == "Top 10 Least Rated Animes":
         st.image("images/top_10_least_rated_animes.png", use_column_width=True)
+        st.markdown("**Insights:** The bar chart highlights the ten anime titles with the lowest average ratings, taking into account the number of ratings they've received. Among the titles with particularly low average ratings are Pupa, Boku no Pico, School Days, Glasslip, Diabolik Lovers, Mahou Sensou, Dragon Ball Z Movie 11: Super Senshi Gekiha!!, Amnesia, 11eyes, Dragon Ball GT, Green Green, and Final Fantasy: The Spirits Within. These anime are notable for receiving lower ratings despite having a substantial number of reviews.")
+    
     elif insights_option == "Top 10 Anime Genre Distribution":
-        st.image("images/top_10_genre_distribution.png", use_column_width=True)
+        st.image("images/top_10_anime_genre_distribution.png", use_column_width=True)
+        st.markdown("**Insights:** From the analysis, we find that Comedy is the leading genre among all the genres. It is followed by Action, Adventure, Fantasy, Sci-fi, and Drama. The ranking continues as observed in the graph.")
+    
     elif insights_option == "Distribution of User Ratings":
-        st.image("images/user_ratings_distribution.png", use_column_width=True)
+        st.image("images/distribution_of_user_ratings.png", use_column_width=True)
+        st.markdown("**Insights:** The histogram reveals that anime ratings generally trend positively. The most common rating is 8, indicating a favorable user opinion. Ratings are skewed towards higher values, with frequent occurrences of ratings between 6 and 10, and fewer ratings below 4 or above 9.")
+    
     elif insights_option == "Average Ratings per Genre":
-        st.image("images/average_ratings_per_genre.png", use_column_width=True)
+        st.image("images/Average_Ratings_per_Genre.png", use_column_width=True)
+        st.markdown("""**Insights:** Higher Rated Genres: Larger text signifies genres with higher average ratings, such as Mystery, Police, and Thriller.
+Lower Rated Genres: Smaller text reflects genres with lower average ratings, including Yaoi, Sports, and Unknown.
+Genre Diversity: The word cloud features a broad spectrum of genres, including Shounen, Seinen, Supernatural, Drama, Comedy, Magic, Historical, Action, and Sci-fi.""")
 
 elif page == "Anime Archive":
     st.title("Anime Archive")
@@ -249,3 +189,4 @@ st.markdown("""
     <p>&copy; 2024 Anime Recommender App | Designed with ❤️ by Anime Fans</p>
 </div>
 """, unsafe_allow_html=True)
+
